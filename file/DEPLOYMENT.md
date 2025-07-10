@@ -8,6 +8,7 @@ The main issues that were causing your app to flash and disappear on Render have
 2. **Static File Serving**: Improved error handling for missing build directory
 3. **Socket.IO Configuration**: Fixed URL configuration for production
 4. **Environment Variables**: Added proper NODE_ENV configuration
+5. **Render Configuration**: Fixed render.yaml to properly specify build commands
 
 ## Deployment Steps
 
@@ -18,7 +19,7 @@ In your Render dashboard, configure your service with these settings:
 **Build Command:**
 
 ```bash
-npm run install-all
+npm install && cd client && npm install && npm run build
 ```
 
 **Start Command:**
@@ -46,6 +47,7 @@ The deployment now includes:
 
    - Added `postinstall` script to build React app
    - Updated build script to include npm install
+   - Fixed `render-build` script
 
 2. **Server.js Improvements:**
 
@@ -57,10 +59,18 @@ The deployment now includes:
 
    - Added `homepage: "."` to package.json
    - Fixed Socket.IO URL configuration
+   - Updated .gitignore to allow build directory
 
 4. **Deployment Files:**
-   - Created `render.yaml` for Render configuration
-   - Added `deploy.sh` script for manual deployment
+
+   - Updated `render.yaml` for Render configuration
+   - Added root `.gitignore` file
+   - Created `uploads/.gitkeep` for directory tracking
+
+5. **Render.yaml Configuration:**
+   - Simplified build command
+   - Removed rootDir specification (using default)
+   - Direct build command instead of script reference
 
 ## Testing Locally
 
@@ -68,7 +78,7 @@ To test the production build locally:
 
 ```bash
 # Build the project
-npm run build
+npm run render-build
 
 # Start the server
 npm start
@@ -84,6 +94,7 @@ If you still experience issues:
 2. **Verify Build Directory**: Ensure `client/build` exists after deployment
 3. **Environment Variables**: Make sure `NODE_ENV=production` is set
 4. **Port Configuration**: Render automatically sets the PORT environment variable
+5. **Git Repository**: Ensure all files are committed and pushed to GitHub
 
 ## File Structure After Deployment
 
@@ -95,7 +106,24 @@ File-Sharing/
 │   └── package.json
 ├── server.js
 ├── package.json
-└── uploads/            # File storage directory
+├── render.yaml         # Render configuration
+├── .gitignore         # Root gitignore
+└── uploads/           # File storage directory
+    └── .gitkeep      # Ensures directory is tracked
 ```
+
+## Common Render Deployment Issues
+
+### Issue: "Could not read package.json"
+
+**Solution**: The render.yaml now uses direct build commands instead of script references.
+
+### Issue: Build directory not found
+
+**Solution**: Updated client/.gitignore to allow build directory inclusion.
+
+### Issue: Missing dependencies
+
+**Solution**: Build command now installs both root and client dependencies.
 
 The app should now work correctly on Render without flashing or disappearing!
