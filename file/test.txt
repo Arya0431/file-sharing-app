@@ -1,0 +1,10 @@
+This is a test file for the File Transfer Application.
+It contains some sample text to verify that the upload and download functionality works correctly.
+
+Features tested:
+- File upload via Socket.IO
+- Real-time progress tracking
+- File download
+- File management
+
+The application should handle this file seamlessly! 
