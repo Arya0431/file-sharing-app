@@ -4,6 +4,28 @@ const socketIo = require("socket.io");
 const cors = require("cors");
 const path = require("path");
 const fs = require("fs");
+const userStore = require("./userStore");
+const jwt = require("jsonwebtoken");
+const JWT_SECRET = process.env.JWT_SECRET || "supersecretkey";
+
+function authenticateJWT(req, res, next) {
+  const authHeader = req.headers.authorization;
+  console.log("Auth header:", authHeader); // Debug log
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res
+      .status(401)
+      .json({ message: "Missing or invalid Authorization header" });
+  }
+  const token = authHeader.split(" ")[1];
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    console.log("JWT error:", err); // Debug log
+    return res.status(401).json({ message: "Invalid or expired token" });
+  }
+}
 
 const app = express();
 const server = http.createServer(app);
@@ -354,7 +376,7 @@ app.get("/health", (req, res) => {
 });
 
 // API routes
-app.get("/api/files", (req, res) => {
+app.get("/api/files", authenticateJWT, (req, res) => {
   fs.readdir(uploadsDir, (err, files) => {
     if (err) {
       return res.status(500).json({ error: "Error reading uploads directory" });
@@ -379,7 +401,7 @@ app.get("/api/files", (req, res) => {
   });
 });
 
-app.get("/api/stats", (req, res) => {
+app.get("/api/stats", authenticateJWT, (req, res) => {
   const stats = {
     connectedUsers: connectedUsers.size,
     activeTransfers: activeTransfers.size,
@@ -403,7 +425,7 @@ app.get("/api/stats", (req, res) => {
   res.json(stats);
 });
 
-app.get("/uploads/:filename", (req, res) => {
+app.get("/uploads/:filename", authenticateJWT, (req, res) => {
   const filePath = path.join(uploadsDir, req.params.filename);
 
   if (fs.existsSync(filePath)) {
@@ -413,7 +435,7 @@ app.get("/uploads/:filename", (req, res) => {
   }
 });
 
-app.delete("/api/files/:filename", (req, res) => {
+app.delete("/api/files/:filename", authenticateJWT, (req, res) => {
   const filePath = path.join(uploadsDir, req.params.filename);
 
   if (fs.existsSync(filePath)) {
@@ -426,6 +448,36 @@ app.delete("/api/files/:filename", (req, res) => {
   } else {
     res.status(404).json({ error: "File not found" });
   }
+});
+
+// Add registration endpoint
+app.post("/api/register", async (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) {
+    return res.status(400).json({ message: "Username and password required" });
+  }
+  try {
+    await userStore.addUser(username, password);
+    res.status(201).json({ message: "User registered successfully" });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+// Add login endpoint
+app.post("/api/login", async (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) {
+    return res.status(400).json({ message: "Username and password required" });
+  }
+  const valid = await userStore.validateUser(username, password);
+  if (!valid) {
+    return res.status(401).json({ message: "Invalid credentials" });
+  }
+  // Issue JWT
+  const token = jwt.sign({ username }, JWT_SECRET, { expiresIn: "2h" });
+  console.log("Token generated for login:", token); // Debug log
+  res.json({ token });
 });
 
 // Catch-all handler to serve React's index.html for any unknown routes

@@ -58,86 +58,51 @@ const FileList = ({ files, onFileDelete, baseUrl, socket }) => {
     setDownloadProgress((prev) => ({ ...prev, [fileName]: 0 }));
 
     try {
-      // Request download info from server
-      if (socket) {
-        socket.emit("request-download", { fileName });
-
-        socket.once("download-ready", (data) => {
-          if (data.fileName === fileName) {
-            // Start download
-            const link = document.createElement("a");
-            link.href = `${baseUrl}${data.filePath}`;
-            link.download = fileName.includes("_")
-              ? fileName.substring(fileName.indexOf("_") + 1)
-              : fileName;
-
-            // Simulate download progress
-            const progressInterval = setInterval(() => {
-              setDownloadProgress((prev) => {
-                const current = prev[fileName] || 0;
-                if (current >= 90) {
-                  clearInterval(progressInterval);
-                  return prev;
-                }
-                return { ...prev, [fileName]: current + 10 };
-              });
-            }, 100);
-
-            link.click();
-
-            // Complete download after a short delay
-            setTimeout(() => {
-              setDownloadProgress((prev) => ({ ...prev, [fileName]: 100 }));
-              setTimeout(() => {
-                setDownloadingFiles((prev) => {
-                  const newSet = new Set(prev);
-                  newSet.delete(fileName);
-                  return newSet;
-                });
-                setDownloadProgress((prev) => {
-                  const newProgress = { ...prev };
-                  delete newProgress[fileName];
-                  return newProgress;
-                });
-              }, 500);
-            }, 1000);
-          }
+      // Secure download with JWT
+      const token = localStorage.getItem("jwt");
+      const response = await fetch(
+        `${baseUrl}/uploads/${encodeURIComponent(fileName)}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      if (!response.ok) {
+        alert("Download failed: File not found or unauthorized");
+        setDownloadingFiles((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(fileName);
+          return newSet;
         });
-
-        socket.once("download-error", (data) => {
-          if (data.fileName === fileName) {
-            alert(`Download failed: ${data.message}`);
-            setDownloadingFiles((prev) => {
-              const newSet = new Set(prev);
-              newSet.delete(fileName);
-              return newSet;
-            });
-            setDownloadProgress((prev) => {
-              const newProgress = { ...prev };
-              delete newProgress[fileName];
-              return newProgress;
-            });
-          }
+        setDownloadProgress((prev) => {
+          const newProgress = { ...prev };
+          delete newProgress[fileName];
+          return newProgress;
         });
-      } else {
-        // Fallback to direct download
-        const link = document.createElement("a");
-        link.href = `${baseUrl}/uploads/${fileName}`;
-        link.download = fileName.includes("_")
-          ? fileName.substring(fileName.indexOf("_") + 1)
-          : fileName;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-
-        setTimeout(() => {
-          setDownloadingFiles((prev) => {
-            const newSet = new Set(prev);
-            newSet.delete(fileName);
-            return newSet;
-          });
-        }, 1000);
+        return;
       }
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName.includes("_")
+        ? fileName.substring(fileName.indexOf("_") + 1)
+        : fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      setTimeout(() => {
+        setDownloadingFiles((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(fileName);
+          return newSet;
+        });
+        setDownloadProgress((prev) => {
+          const newProgress = { ...prev };
+          delete newProgress[fileName];
+          return newProgress;
+        });
+      }, 1000);
     } catch (error) {
       console.error("Download error:", error);
       alert("Download failed. Please try again.");
@@ -145,6 +110,11 @@ const FileList = ({ files, onFileDelete, baseUrl, socket }) => {
         const newSet = new Set(prev);
         newSet.delete(fileName);
         return newSet;
+      });
+      setDownloadProgress((prev) => {
+        const newProgress = { ...prev };
+        delete newProgress[fileName];
+        return newProgress;
       });
     }
   };

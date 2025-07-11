@@ -4,6 +4,7 @@ import "./App.css";
 import FileUpload from "./components/FileUpload";
 import FileList from "./components/FileList";
 import TransferProgress from "./components/TransferProgress";
+import AuthForm from "./components/AuthForm";
 
 // Improved Socket.IO URL configuration
 const getSocketUrl = () => {
@@ -28,6 +29,12 @@ function App() {
   const [welcomeMessage, setWelcomeMessage] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [connectionError, setConnectionError] = useState(null);
+  const [authToken, setAuthToken] = useState(
+    () => localStorage.getItem("jwt") || ""
+  );
+  const [authUser, setAuthUser] = useState(
+    () => localStorage.getItem("username") || ""
+  );
 
   useEffect(() => {
     console.log("Attempting to connect to:", SOCKET_URL);
@@ -145,34 +152,74 @@ function App() {
     }, 5000);
   };
 
-  const fetchFiles = async () => {
+  // Helper function to fetch files with a specific token
+  const fetchFilesWithToken = async (token) => {
+    // Always get the latest token from localStorage if available
+    const jwt = localStorage.getItem("jwt") || token;
+    console.log("fetchFilesWithToken called with token:", jwt);
     try {
-      const response = await fetch(`${SOCKET_URL}/api/files`);
+      const response = await fetch(`${SOCKET_URL}/api/files`, {
+        headers: { Authorization: `Bearer ${jwt}` },
+      });
+      console.log("fetchFilesWithToken response status:", response.status);
+      if (response.status === 401) {
+        setAuthToken("");
+        setAuthUser("");
+        localStorage.removeItem("jwt");
+        localStorage.removeItem("username");
+        return;
+      }
       const data = await response.json();
       setFiles(data);
     } catch (error) {
+      // Do not log out on other errors
       console.error("Error fetching files:", error);
     }
   };
 
-  const fetchStats = async () => {
+  // Helper function to fetch stats with a specific token
+  const fetchStatsWithToken = async (token) => {
+    // Always get the latest token from localStorage if available
+    const jwt = localStorage.getItem("jwt") || token;
+    console.log("fetchStatsWithToken called with token:", jwt);
     try {
-      const response = await fetch(`${SOCKET_URL}/api/stats`);
+      const response = await fetch(`${SOCKET_URL}/api/stats`, {
+        headers: { Authorization: `Bearer ${jwt}` },
+      });
+      console.log("fetchStatsWithToken response status:", response.status);
+      if (response.status === 401) {
+        setAuthToken("");
+        setAuthUser("");
+        localStorage.removeItem("jwt");
+        localStorage.removeItem("username");
+        return;
+      }
       const data = await response.json();
       setServerStats(data);
     } catch (error) {
+      // Do not log out on other errors
       console.error("Error fetching stats:", error);
     }
   };
 
-  useEffect(() => {
-    fetchFiles();
-    fetchStats();
+  const fetchFiles = async () => {
+    console.log("fetchFiles called with authToken:", authToken); // Debug log
+    return fetchFilesWithToken(authToken);
+  };
 
-    // Refresh stats periodically
-    const statsInterval = setInterval(fetchStats, 10000);
-    return () => clearInterval(statsInterval);
-  }, []);
+  const fetchStats = async () => {
+    return fetchStatsWithToken(authToken);
+  };
+
+  // Add a new useEffect to run fetchFiles and fetchStats only when authToken is set
+  useEffect(() => {
+    if (authToken) {
+      fetchFiles();
+      fetchStats();
+      const statsInterval = setInterval(fetchStats, 10000);
+      return () => clearInterval(statsInterval);
+    }
+  }, [authToken]);
 
   const addTransfer = (transfer) => {
     setTransfers((prev) => [...prev, transfer]);
@@ -186,6 +233,7 @@ function App() {
     try {
       await fetch(`${SOCKET_URL}/api/files/${fileName}`, {
         method: "DELETE",
+        headers: { Authorization: `Bearer ${authToken}` },
       });
       fetchFiles();
       fetchStats();
@@ -194,6 +242,27 @@ function App() {
       console.error("Error deleting file:", error);
       addNotification(`❌ Error deleting file`, "error");
     }
+  };
+
+  // Handle login success
+  const handleAuthSuccess = (token, username) => {
+    console.log("Login successful - Token:", token, "Username:", username);
+    setAuthToken(token);
+    setAuthUser(username);
+    localStorage.setItem("jwt", token);
+    localStorage.setItem("username", username);
+    console.log("Auth state updated, calling fetchFiles and fetchStats");
+    // Use the token directly instead of relying on state update
+    fetchFilesWithToken(token);
+    fetchStatsWithToken(token);
+  };
+
+  // Handle logout
+  const handleLogout = () => {
+    setAuthToken("");
+    setAuthUser("");
+    localStorage.removeItem("jwt");
+    localStorage.removeItem("username");
   };
 
   const formatFileSize = (bytes) => {
@@ -207,6 +276,11 @@ function App() {
   const removeNotification = (id) => {
     setNotifications((prev) => prev.filter((n) => n.id !== id));
   };
+
+  // Render
+  if (!authToken) {
+    return <AuthForm onAuthSuccess={handleAuthSuccess} />;
+  }
 
   return (
     <div className="App">
@@ -233,6 +307,10 @@ function App() {
                 {formatFileSize(serverStats.totalSize)}
               </span>
             )}
+          </div>
+          <div className="auth-info">
+            <span>Welcome, {authUser}!</span>
+            <button onClick={handleLogout}>Logout</button>
           </div>
         </div>
       </header>
@@ -284,6 +362,7 @@ function App() {
               isConnected={isConnected}
               onTransferStart={addTransfer}
               onTransferComplete={removeTransfer}
+              authToken={authToken}
             />
           </div>
 
